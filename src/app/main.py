@@ -17,7 +17,8 @@ from ddtrace import patch_all
 patch_all()
 
 # Datadog logging configuration (from official docs)
-LOG_FILE = "/LogFiles/app.log"
+# Use the path that matches the Datadog sidecar configuration
+LOG_FILE = "/shared-volume/logs/app.log"
 os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
 
 FORMAT = ('%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] '
