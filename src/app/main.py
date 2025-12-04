@@ -3,49 +3,39 @@ import logging
 import time
 from datetime import datetime
 import uuid
+import os
+import sys
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Configure logging with JSON format for better structured logging
-import logging
-import json
-import sys
+# Import ddtrace for automatic instrumentation
+from ddtrace import patch_all
 
-class JSONFormatter(logging.Formatter):
-    def format(self, record):
-        log_entry = {
-            'timestamp': self.formatTime(record, self.datefmt),
-            'level': record.levelname,
-            'logger': record.name,
-            'message': record.getMessage(),
-            'service': 'album-api'
-        }
-        
-        # Add extra fields if they exist
-        if hasattr(record, 'request_id'):
-            log_entry['request_id'] = record.request_id
-        if hasattr(record, 'user_id'):
-            log_entry['user_id'] = record.user_id
-        if hasattr(record, 'operation'):
-            log_entry['operation'] = record.operation
-        if hasattr(record, 'duration'):
-            log_entry['duration_ms'] = record.duration
-        if hasattr(record, 'status_code'):
-            log_entry['status_code'] = record.status_code
-            
-        return json.dumps(log_entry)
+# Auto-instrument FastAPI and other libraries
+patch_all()
 
-# Configure JSON logging
-handler = logging.StreamHandler(sys.stdout)
-handler.setFormatter(JSONFormatter())
+# Datadog logging configuration (from official docs)
+LOG_FILE = "/LogFiles/app.log"
+os.makedirs(os.path.dirname(LOG_FILE), exist_ok=True)
+
+FORMAT = ('%(asctime)s %(levelname)s [%(name)s] [%(filename)s:%(lineno)d] '
+        '[dd.service=%(dd.service)s dd.env=%(dd.env)s dd.version=%(dd.version)s dd.trace_id=%(dd.trace_id)s dd.span_id=%(dd.span_id)s] '
+        '- %(message)s')
 
 logging.basicConfig(
     level=logging.INFO,
-    handlers=[handler]
+    format=FORMAT,
+    handlers=[
+        logging.FileHandler(LOG_FILE),
+        logging.StreamHandler(sys.stdout)
+    ]
 )
 logger = logging.getLogger(__name__)
+logger.level = logging.INFO
+
+logger.info('Album API starting with Datadog integration!')
 
 app = FastAPI(
     title="Album API",
@@ -61,7 +51,7 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
-# Request logging middleware with Datadog-friendly structured logging
+# Request logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
@@ -70,13 +60,7 @@ async def log_requests(request: Request, call_next):
     request_id = str(uuid.uuid4())[:8]
     
     # Log request start
-    logger.info("Request started", extra={
-        'operation': 'request_start',
-        'request_id': request_id,
-        'method': request.method,
-        'path': str(request.url.path),
-        'query_params': str(request.url.query) if request.url.query else None
-    })
+    logger.info(f"Request started: {request.method} {request.url.path}")
     
     response = await call_next(request)
     
@@ -84,14 +68,7 @@ async def log_requests(request: Request, call_next):
     duration_ms = round((time.time() - start_time) * 1000, 2)
     
     # Log request completion
-    logger.info("Request completed", extra={
-        'operation': 'request_complete',
-        'request_id': request_id,
-        'method': request.method,
-        'path': str(request.url.path),
-        'status_code': response.status_code,
-        'duration': duration_ms
-    })
+    logger.info(f"Request completed: {request.method} {request.url.path} - Status: {response.status_code} - Duration: {duration_ms}ms")
     
     return response
 
@@ -164,26 +141,14 @@ def get_albums():
 
 @app.get("/albums/{album_id}")
 def get_album(album_id: int):
-    logger.info("Album retrieval requested", extra={
-        'operation': 'get_album',
-        'album_id': album_id
-    })
+    logger.info(f"Retrieving album with ID: {album_id}")
     
     album = next((album for album in albums if album.id == album_id), None)
     if not album:
-        logger.warning("Album not found", extra={
-            'operation': 'get_album_error',
-            'album_id': album_id,
-            'error': 'not_found'
-        })
+        logger.warning(f"Album with ID {album_id} not found")
         raise HTTPException(status_code=404, detail="Album not found")
     
-    logger.info("Album retrieved successfully", extra={
-        'operation': 'get_album_success',
-        'album_id': album_id,
-        'album_title': album.title,
-        'artist': album.artist
-    })
+    logger.info(f"Found album: {album.title} by {album.artist}")
     return album
 
 
@@ -251,16 +216,10 @@ def delete_album(album_id: int):
 
 @app.get("/albums/search")
 def search_albums(q: str):
-    logger.info("Search requested", extra={
-        'operation': 'search_albums',
-        'query': q
-    })
+    logger.info(f"Searching albums with query: '{q}'")
     
     if not q.strip():
-        logger.warning("Empty search query", extra={
-            'operation': 'search_error',
-            'error': 'empty_query'
-        })
+        logger.warning("Empty search query provided")
         raise HTTPException(status_code=400, detail="Search query cannot be empty")
     
     query_lower = q.lower()
@@ -269,11 +228,7 @@ def search_albums(q: str):
         if query_lower in album.title.lower() or query_lower in album.artist.lower()
     ]
     
-    logger.info("Search completed", extra={
-        'operation': 'search_complete',
-        'query': q,
-        'results_count': len(matching_albums)
-    })
+    logger.info(f"Search for '{q}' returned {len(matching_albums)} results")
     return {"query": q, "results": matching_albums, "total": len(matching_albums)}
 
 
