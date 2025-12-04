@@ -8,14 +8,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Datadog tracing imports
-from ddtrace import patch_all
-from ddtrace.contrib.logging import CorrelationLogFilter
-
-# Auto-instrument FastAPI, HTTP requests, etc.
-patch_all()
-
-# Configure logging with JSON format for better Datadog parsing
+# Configure logging with JSON format for better structured logging
 import logging
 import json
 import sys
@@ -29,10 +22,6 @@ class JSONFormatter(logging.Formatter):
             'message': record.getMessage(),
             'service': 'album-api'
         }
-        
-        # Add Datadog trace correlation
-        if hasattr(record, 'dd'):
-            log_entry.update(record.dd)
         
         # Add extra fields if they exist
         if hasattr(record, 'request_id'):
@@ -48,10 +37,9 @@ class JSONFormatter(logging.Formatter):
             
         return json.dumps(log_entry)
 
-# Configure JSON logging for Datadog with trace correlation
+# Configure JSON logging
 handler = logging.StreamHandler(sys.stdout)
 handler.setFormatter(JSONFormatter())
-handler.addFilter(CorrelationLogFilter())
 
 logging.basicConfig(
     level=logging.INFO,
