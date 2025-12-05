@@ -13,5 +13,6 @@ ENV PYTHONUNBUFFERED=1
 ENV DD_LOGS_INJECTION=true
 
 # Use shell form so ${PORT} is expanded from the environment at container start.
-CMD ["sh", "-c", "ddtrace-run uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
+#CMD ["sh", "-c", "ddtrace-run uvicorn app.main:app --host 0.0.0.0 --port ${PORT}"]
 
+CMD ["ddtrace-run","uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
